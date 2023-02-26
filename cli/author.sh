@@ -15,8 +15,9 @@ verbose=''
 
 usage() { 
   echo "Usage:"
-  echo "  $0 create <metadata-file> <audio-file> [book-image] [author-image]"
   echo "  $0 bibliography"
+  echo "  $0 create <metadata-file> <audio-file> [book-image] [author-image]"
+  echo "  $0 update <book-id> <filetype> <file>"
   exit 1; 
 }
 
@@ -36,6 +37,7 @@ run() {
   case $1 in
     create) createAudiobook $2 $3 $4 $5 ;;
     bibliography) showBibliography ;;
+    update) update $2 $3 $4 ;;
     *) usage ;;
   esac
 }
@@ -61,42 +63,40 @@ createAudiobook() {
   assertNotNull "${authorImage}" 1 "metadata is invalid: bubble.author-image is missing"
 
   trace "Deploying nft contract with args '${nftTitle}' ${nftSymbol}"
-  #nftContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json "${nftTitle}" "${nftSymbol}")
-  #echo "NFT Contract: ${nftContract}" >> contracts.log
-  nftContract="0xBaEbfC8781906Be65659EF5FdA5B59B24358D4e2"
+  nftContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json "${nftTitle}" "${nftSymbol}")
+  echo "NFT Contract: ${nftContract}" >> contracts.log
   assertZero $? 2 "failed to deploy nft contract" "${nftContract}"
   assertAddress "${nftContract}" 1 "failed to deploy nft contract - contract is invalid: '${nftContract}'"
   echo "Successfully deployed NFT Contract: ${nftContract}"
 
   trace "Deploying bubble contract"
-  #bubbleContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json "${nftContract}")
-  #echo "Bubble Contract: ${bubbleContract}" >> contracts.log
-  bubbleContract="0x7A3bF9f9557b7c9BE95aF3D97bEc58e9809C03EA"
+  bubbleContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json "${nftContract}")
+  echo "Bubble Contract: ${bubbleContract}" >> contracts.log
   assertZero $? 2 "failed to deploy bubble contract"
   assertAddress "${bubbleContract}" 1 "failed to deploy nft contract - contract is invalid: '${bubbleContract}'"
   echo "Successfully deployed Bubble Contract: ${bubbleContract}"
 
   trace "Creating bubble"
-  #bubble vault create ${verbose} --key ${privateKey} bubble $bubbleContract
+  bubble vault create ${verbose} --key ${privateKey} bubble $bubbleContract
   assertZero $? 2 "failed to create bubble"
   echo "Successfully created bubble"
   
-  #writeMetadata $bubbleContract $1
+  writeMetadata $bubbleContract $1
   assertZero $? 3 "failed to write metadata to bubble"
   echo "Successfully wrote metadata"
 
-  #writeFile 'bin' "audio" $bubbleContract "${audio}" $2 
+  writeFile 'bin' "audio" $bubbleContract "${audio}" $2 
   assertZero $? 3 "failed to write audio file to bubble"
   echo "Successfully wrote audio"
 
   if [ ! -z $3 ]; then 
-    #writeFile 'bin' "book image" $bubbleContract "${bookImage}" $3
+    writeFile 'bin' "book image" $bubbleContract "${bookImage}" $3
     assertZero $? 3 "failed to write image to bubble"
     echo "Successfully wrote image"
   fi
 
   if [ ! -z $4 ]; then 
-    #writeFile 'bin' "author image" $bubbleContract "${authorImage}" $4
+    writeFile 'bin' "author image" $bubbleContract "${authorImage}" $4
     assertZero $? 3 "failed to write author image to bubble"
     echo "Successfully wrote author image"
   fi
@@ -108,7 +108,7 @@ createAudiobook() {
 }
 
 showBibliography() {
-  events=$(node ../../bubble-tools/src/cli.mjs contract events -f $(dirname $0)/../contracts/artifacts/AudiobookRegistry.json ${REGISTRY_CONTRACT} Register '{"author": "'${publicKey}'"}')
+  events=$(bubble contract events -f $(dirname $0)/../contracts/artifacts/AudiobookRegistry.json ${REGISTRY_CONTRACT} Register '{"author": "'${publicKey}'"}')
   assertZero $? 4 "failed to query bibliography from on-chain registry"
   bubbles=$( jq -r '.[].bubbleContract' <<< "[${events}]" | uniq)
   for b in $bubbles
@@ -117,6 +117,30 @@ showBibliography() {
     metadata=$(bubble vault read --key ${privateKey} bubble ${b} $PUBLIC_METADATA_FILE)
     echo "id: ${b}, title: \"$(jq -r '.title' <<< ${metadata})\""
   done
+}
+
+update() {
+  id=$1
+  type=$2
+  file=$3
+  assertNotEmpty "${id}" 1 "id parameter is missing"
+  assertNotEmpty "${type}" 1 "content type parameter is missing"
+  assertNotEmpty "${file}" 1 "file parameter is missing"
+  if [ $type == 'metadata' ]
+  then
+    writeMetadata $id $file
+    assertZero $? 3 "failed to write metadata to bubble"
+    echo "Successfully wrote ${type} (${file}) to bubble ${id} file ${PUBLIC_METADATA_FILE}"
+  else
+    trace "reading metadata from bubble at ${id}"
+    metadata=$(bubble vault read --key ${privateKey} bubble ${id} $PUBLIC_METADATA_FILE)
+    assertZero $? 3 "failed to read metadata from bubble"
+    filename=$( jq -r '.bubble."'${type}'"' <<< "${metadata}")
+    assertNotNull "$filename" 1 "type parameter is invalid"
+    writeFile 'bin' $type $id "${filename}" $file
+    assertZero $? 3 "failed to write ${type} to bubble"
+    echo "Successfully wrote ${type} (${file}) to bubble ${id} file ${filename}"
+  fi
 }
 
 writeMetadata() {
