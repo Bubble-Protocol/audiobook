@@ -14,7 +14,8 @@ verbose=''
 
 usage() { 
   echo "Usage:"
-  echo "  $0 discover [author-id]"
+  echo "  $(basename $0) buy <book-id>"
+  echo "  $(basename $0) discover [author-id]"
   exit 1; 
 }
 
@@ -33,6 +34,7 @@ shift $((OPTIND-1))
 run() {
   case $1 in
     discover) discover $2 ;;
+    buy) buy $2 ;;
     *) usage ;;
   esac
 }
@@ -69,6 +71,26 @@ discover() {
     title=\"$(jq -r '.title' <<< ${metadata})\"
     echo "id: ${b}, author-id: ${authorId}, author: ${author}, title: ${title}"
   done
+}
+
+buy() {
+  id=$1
+  assertNotEmpty "${id}" 1 "missing book-id parameter"
+  trace "getting nft contract address from bubble contract"
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  assertZero $? 2 "failed to query bubble contract for the nft contract address" "${nftContract}"
+  assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
+  trace "getting price from nft contract ${nftContract}"
+  price=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} price)
+  assertZero $? 2 "failed to query nft contract for the price" "${price}"
+  read -p "Price is ${price} WEI, do you want to continue? y/n " approval
+  if [ "$approval" == 'y' ]
+  then
+    trace "minting token from nft contract ${nftContract}"
+    tokenId=$(bubble contract transact -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json -o '{"value": '${price}'}' ${nftContract} mintToken)
+    assertZero $? 2 "failed to query nft contract for the price" "${tokenId}"
+    echo "Purchase Successful.  Your purchase and token ID will appear in your library after the transaction has been mined."
+  fi
 }
 
 assertZero() {

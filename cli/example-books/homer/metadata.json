@@ -1,7 +1,8 @@
 {
   "nft": {
     "title": "Homer, I Hardly Knew Me",
-    "symbol": "AUDIOBK"
+    "symbol": "AUDIOBK",
+    "price": 10000
   },
   "author": "Homer Simpson",
   "title": "Homer, I Hardly Knew Me",

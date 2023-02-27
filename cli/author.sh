@@ -15,9 +15,10 @@ verbose=''
 
 usage() { 
   echo "Usage:"
-  echo "  $0 bibliography"
-  echo "  $0 create <metadata-file> <audio-file> [book-image] [author-image]"
-  echo "  $0 update <book-id> <filetype> <file>"
+  echo "  $(basename $0) bibliography"
+  echo "  $(basename $0) create <metadata-file> <audio-file> [book-image] [author-image]"
+  echo "  $(basename $0) setPrice <book-id> <price>"
+  echo "  $(basename $0) update <book-id> <filetype> <file>"
   exit 1; 
 }
 
@@ -38,6 +39,7 @@ run() {
     create) createAudiobook $2 $3 $4 $5 ;;
     bibliography) showBibliography ;;
     update) update $2 $3 $4 ;;
+    setPrice) setPrice $2 $3 ;;
     *) usage ;;
   esac
 }
@@ -53,17 +55,19 @@ createAudiobook() {
   nftTitle=$( jq -r '.nft.title' <<< "${metadata}")
   assertZero $? 1 "metadata is invalid"
   nftSymbol=$( jq -r '.nft.symbol' <<< "${metadata}")
+  price=$( jq -r '.nft.price' <<< "${metadata}")
   audio=$( jq -r '.bubble.audio' <<< "${metadata}")
   bookImage=$( jq -r '.bubble.image' <<< "${metadata}")
   authorImage=$( jq -r '.bubble."author-image"' <<< "${metadata}")
   assertNotNull "${nftTitle}" 1 "metadata is invalid: nft.title is missing"
   assertNotNull "${nftSymbol}" 1 "metadata is invalid: nft.symbol is missing"
+  assertNotNull "${price}" 1 "metadata is invalid: nft.price is missing"
   assertNotNull "${audio}" 1 "metadata is invalid: bubble.audio is missing"
   assertNotNull "${bookImage}" 1 "metadata is invalid: bubble.image is missing"
   assertNotNull "${authorImage}" 1 "metadata is invalid: bubble.author-image is missing"
 
   trace "Deploying nft contract with args '${nftTitle}' ${nftSymbol}"
-  nftContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json "${nftTitle}" "${nftSymbol}")
+  nftContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json "${nftTitle}" "${nftSymbol}" "${price}")
   echo "NFT Contract: ${nftContract}" >> contracts.log
   assertZero $? 2 "failed to deploy nft contract" "${nftContract}"
   assertAddress "${nftContract}" 1 "failed to deploy nft contract - contract is invalid: '${nftContract}'"
@@ -141,6 +145,21 @@ update() {
     assertZero $? 3 "failed to write ${type} to bubble"
     echo "Successfully wrote ${type} (${file}) to bubble ${id} file ${filename}"
   fi
+}
+
+setPrice() {
+  id=$1
+  price=$2
+  assertNotEmpty "${id}" 1 "id parameter is missing"
+  assertNotEmpty "${price}" 1 "price parameter is missing"
+  trace "getting nft contract address from bubble contract"
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  assertZero $? 2 "failed to query bubble contract for the nft contract address"
+  assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
+  trace "setting price on nft contract ${nftContract}"
+  trace `bubble contract transact ${verbose} --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} setPrice ${price}`
+  assertZero $? 2 "failed to set price on nft contract"
+  echo "Successfully set price of ${price} on nft contract ${nftContract} for audiobook id ${id}"
 }
 
 writeMetadata() {

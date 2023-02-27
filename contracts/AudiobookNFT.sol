@@ -17,10 +17,46 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 contract AudiobookNFT is ERC721 {
 
-    /**
-     * @dev Initializes the contract by setting a `name` and a `symbol` to the token collection.
-     */
-    constructor(string memory name_, string memory symbol_)
-      ERC721(name_, symbol_) {}
+  /**
+   * @dev Author of the audiobook
+   */
+  address public author = _msgSender();
+
+  /**
+   * @dev Price of this audiobook in wei
+   */
+  uint256 public price;
+
+  /**
+   * @dev Number of audiobooks minted
+   */
+  uint256 public numberOfTokensMinted;
+
+  /**
+   * @dev Initializes the contract by setting a `name`, `symbol` and `price` to the token collection.
+   */
+  constructor(string memory name_, string memory symbol_, uint256 price_)
+    ERC721(name_, symbol_) 
+    {
+      price = price_;
+    }
+
+  /**
+   * @dev Set the mint `price` of this nft in wei (owner only)
+   */
+  function setPrice(uint256 newPrice_) public {
+    require(msg.sender == author, "permission denied"); 
+    price = newPrice_;
+  }
+
+  /**
+   * @dev Allows anyone to buy an audiobook.  
+   * @return the token id.
+   */
+  function mintToken() public virtual payable returns (uint256) {
+    require(msg.value >= price, "payment insufficient"); 
+    _mint(_msgSender(), numberOfTokensMinted);
+    return numberOfTokensMinted++;
+  }
 
 }
