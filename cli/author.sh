@@ -16,6 +16,7 @@ verbose=''
 usage() { 
   echo "Usage:"
   echo "  $(basename $0) bibliography"
+  echo "  $(basename $0) balance <book-id>"
   echo "  $(basename $0) create <metadata-file> <audio-file> [book-image] [author-image]"
   echo "  $(basename $0) setPrice <book-id> <price>"
   echo "  $(basename $0) update <book-id> <filetype> <file>"
@@ -40,6 +41,7 @@ run() {
     bibliography) showBibliography ;;
     update) update $2 $3 $4 ;;
     setPrice) setPrice $2 $3 ;;
+    balance) balance $2 ;;
     *) usage ;;
   esac
 }
@@ -160,6 +162,18 @@ setPrice() {
   trace `bubble contract transact ${verbose} --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} setPrice ${price}`
   assertZero $? 2 "failed to set price on nft contract"
   echo "Successfully set price of ${price} on nft contract ${nftContract} for audiobook id ${id}"
+}
+
+balance() {
+  id=$1
+  assertNotEmpty "${id}" 1 "id parameter is missing"
+  trace "getting nft contract address from bubble contract"
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  assertZero $? 2 "failed to query bubble contract for the nft contract address"
+  assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
+  trace "getting balance of nft contract ${nftContract}"
+  ethBalance=$(bubble wallet balance ${nftContract})
+  echo "${ethBalance}*1000000000000000000" | bc | sed 's/\.0*$//'
 }
 
 writeMetadata() {
