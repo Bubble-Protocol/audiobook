@@ -18,6 +18,7 @@ usage() {
   echo "  $(basename $0) buy <book-id>"
   echo "  $(basename $0) discover [author-id]"
   echo "  $(basename $0) library"
+  echo "  $(basename $0) listen"
   exit 1; 
 }
 
@@ -38,6 +39,7 @@ run() {
     discover) discover $2 ;;
     buy) buy $2 ;;
     library) library $2 ;;
+    listen) listen $2 ;;
     *) usage ;;
   esac
 }
@@ -139,6 +141,25 @@ library() {
       echo "book: ${b}, token: ${t}"
     done
   done
+}
+
+listen() {
+  id=$1
+  assertNotEmpty "${id}" 1 "missing book-id parameter"
+  trace "reading metadata from bubble at ${1}"
+  metadata=$(bubble vault read --key ${privateKey} bubble ${1} $PUBLIC_METADATA_FILE)
+  assertZero $? 3 "failed to read metadata from bubble"
+  author=\"$(jq -r '.author' <<< ${metadata})\"
+  title=\"$(jq -r '.title' <<< ${metadata})\"
+  audiofile=$(jq -r '.bubble.audio' <<< ${metadata})
+  assertNotNull "${audiofile}" 2 "metadata is invalid: audio file is missing"
+  filetype=${audiofile##*.}
+  if [ -z $filetype ]; then filetype='download'; fi
+  target="${1}.${filetype}"
+  trace "downloading ${audiofile} from bubble at ${1}"
+  bubble vault read --binary $target --key ${privateKey} bubble $1 $audiofile
+  assertZero $? 2 "failed to download audio file"
+  echo "Successfully downloaded audiobook to ${target}"
 }
 
 assertZero() {
