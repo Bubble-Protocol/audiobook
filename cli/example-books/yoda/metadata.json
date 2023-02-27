@@ -1,0 +1,16 @@
+{
+  "nft": {
+    "title": "A Walk On The Light Side",
+    "symbol": "AUDIOBK",
+    "price": 50000
+  },
+  "author": "Yoda",
+  "title": "A Walk On The Light Side",
+  "synopsis": "",
+  "read-by": "R2D2",
+  "bubble": {
+    "image": "0x8000000000000000000000000000000000000002/book-image.jpg",
+    "author-image": "0x8000000000000000000000000000000000000002/author-image.jpeg",
+    "audio": "0x8000000000000000000000000000000000000003/audio.mp3"
+  }
+}
