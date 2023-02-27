@@ -3,6 +3,7 @@
 # Constants
 
 privateKey=requester
+publicKey=$(echo '0x41a60f71063cd7c9e5247d3e7d551f91f94b5c3b' | tr '[:upper:]' '[:lower:]')
 
 PUBLIC_METADATA_FILE='0x8000000000000000000000000000000000000001'
 REGISTRY_CONTRACT='0x9B0E06b0Ceb584C1f5B46b18d6eDEC09d5BC073E'
@@ -16,6 +17,7 @@ usage() {
   echo "Usage:"
   echo "  $(basename $0) buy <book-id>"
   echo "  $(basename $0) discover [author-id]"
+  echo "  $(basename $0) library"
   exit 1; 
 }
 
@@ -35,12 +37,14 @@ run() {
   case $1 in
     discover) discover $2 ;;
     buy) buy $2 ;;
+    library) library $2 ;;
     *) usage ;;
   esac
 }
 
 discover() {
   authorIdParam=$1
+  format=$2
   filter=''
   if [ ! -z $authorIdParam ]
   then 
@@ -54,10 +58,13 @@ discover() {
   assertZero $? 4 "failed to query on-chain registry"
   bubbles=$( jq -r '.[].bubbleContract' <<< "[${events}]" | uniq)
   bubbleArr=( $bubbles )
-  trace "${#bubbleArr[@]} audiobooks found"
+  numBubbles=${#bubbleArr[@]}
+  trace "${numBubbles} audiobooks found"
   authorId=$authorIdParam
+  count=0
   for b in $bubbles
   do
+    ((count++))
     if [ -z $authorIdParam ]
     then
       trace "getting owner of bubble contract ${b}"
@@ -69,7 +76,13 @@ discover() {
     assertZero $? 3 "failed to read metadata from bubble"
     author=\"$(jq -r '.author' <<< ${metadata})\"
     title=\"$(jq -r '.title' <<< ${metadata})\"
-    echo "id: ${b}, author-id: ${authorId}, author: ${author}, title: ${title}"
+    case "${format}" in
+      json) 
+        separator=','
+        if [ $count -eq $numBubbles ]; then separator=''; fi
+        echo '{"id": "'${b}'", "author-id": "'${authorId}'", "author": '${author}', "title": '${title}'}'${separator} ;;
+      *) echo "id: ${b}, author-id: ${authorId}, author: ${author}, title: ${title}" ;;
+    esac
   done
 }
 
@@ -87,10 +100,45 @@ buy() {
   if [ "$approval" == 'y' ]
   then
     trace "minting token from nft contract ${nftContract}"
-    tokenId=$(bubble contract transact -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json -o '{"value": '${price}'}' ${nftContract} mintToken)
+    tokenId=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json -o '{"value": '${price}'}' ${nftContract} mintToken)
     assertZero $? 2 "failed to query nft contract for the price" "${tokenId}"
     echo "Purchase Successful.  Your purchase and token ID will appear in your library after the transaction has been mined."
   fi
+}
+
+library() {
+  trace "getting all titles"
+  oldVerbose=$verbose
+  verbose=''
+  allBooks=$(discover '' 'json')
+  verbose=$oldVerbose
+  bubbles=$( jq -r '.[].id' <<< "[${allBooks}]")
+  bubbleArr=( $bubbles )
+  numBubbles=${#bubbleArr[@]}
+  trace "checking ${numBubbles} titles for token ids you own"
+  filter='[{"to": "'${publicKey}'"}, {"from": "'${publicKey}'"}]'
+  for b in $bubbles
+  do
+    nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${b} nftContract)
+    assertZero $? 2 "failed to query bubble contract ${b} for the nft contract address"
+    assertAddress "${nftContract}" 1 "failed to query bubble ${b} contract for the nft contract address - returned contract is invalid: '${nftContract}'"
+    events=$(bubble contract events -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} Transfer "${filter}")
+    assertZero $? 4 "failed to query on-chain registry"
+    tokens=''
+    for e in $events
+    do
+      e=$(sed 's/,$//' <<< "${e}")
+      from=$(jq -r '.from' <<< "${e}" | tr '[:upper:]' '[:lower:]')
+      to=$(jq -r '.to' <<< "${e}" | tr '[:upper:]' '[:lower:]')
+      tokenId=$(jq -r '.tokenId' <<< "${e}")
+      if [ "${to}" == $publicKey ]; then tokens="${tokens} ${tokenId}"; fi
+      if [ "${from}" == $publicKey ]; then tokens=${tokens//${tokenId}/}; fi
+    done
+    for t in $tokens
+    do
+      echo "book: ${b}, token: ${t}"
+    done
+  done
 }
 
 assertZero() {
