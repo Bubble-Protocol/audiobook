@@ -45,7 +45,7 @@ contract AudiobookNFT is ERC721 {
    * @dev Set the mint `price` of this nft in wei (owner only)
    */
   function setPrice(uint256 newPrice_) public {
-    require(msg.sender == author, "permission denied"); 
+    require(_msgSender() == author, "permission denied"); 
     price = newPrice_;
   }
 
@@ -57,6 +57,15 @@ contract AudiobookNFT is ERC721 {
     require(msg.value >= price, "payment insufficient"); 
     _mint(_msgSender(), numberOfTokensMinted);
     return numberOfTokensMinted++;
+  }
+
+  /**
+   * @dev Set the mint `price` of this nft in wei (owner only)
+   */
+  function withdraw(uint256 amount_) public {
+    require(_msgSender() == author, "permission denied"); 
+    require(amount_ <= address(this).balance, "insufficient balance"); 
+    payable(author).transfer(amount_);
   }
 
 }

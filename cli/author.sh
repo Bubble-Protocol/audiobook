@@ -20,6 +20,7 @@ usage() {
   echo "  $(basename $0) create <metadata-file> <audio-file> [book-image] [author-image]"
   echo "  $(basename $0) setPrice <book-id> <price>"
   echo "  $(basename $0) update <book-id> <filetype> <file>"
+  echo "  $(basename $0) withdraw <book-id> <amount>"
   exit 1; 
 }
 
@@ -42,6 +43,7 @@ run() {
     update) update $2 $3 $4 ;;
     setPrice) setPrice $2 $3 ;;
     balance) balance $2 ;;
+    withdraw) withdraw $2 $3 ;;
     *) usage ;;
   esac
 }
@@ -108,9 +110,10 @@ createAudiobook() {
   fi
 
   trace "Registering book launch with on-chain Audiobook Registry"
-  trace `bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookRegistry.json ${REGISTRY_CONTRACT} register ${bubbleContract}`
-  assertZero $? 4 "failed to register book launch with on-chain registry"
+  receipt=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookRegistry.json ${REGISTRY_CONTRACT} register ${bubbleContract})
+  assertZero $? 4 "failed to register book launch with on-chain registry" "${receipt}"
   echo "Successfully registered book launch with on-chain Audiobook Registry"
+  echo "Your unique book id is: ${bubbleContract}"
 }
 
 showBibliography() {
@@ -159,8 +162,8 @@ setPrice() {
   assertZero $? 2 "failed to query bubble contract for the nft contract address"
   assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
   trace "setting price on nft contract ${nftContract}"
-  trace `bubble contract transact ${verbose} --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} setPrice ${price}`
-  assertZero $? 2 "failed to set price on nft contract"
+  receipt=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} setPrice ${price})
+  assertZero $? 2 "failed to set price on nft contract" "${receipt}"
   echo "Successfully set price of ${price} on nft contract ${nftContract} for audiobook id ${id}"
 }
 
@@ -174,6 +177,21 @@ balance() {
   trace "getting balance of nft contract ${nftContract}"
   ethBalance=$(bubble wallet balance ${nftContract})
   echo "${ethBalance}*1000000000000000000" | bc | sed 's/\.0*$//'
+}
+
+withdraw() {
+  id=$1
+  amount=$2
+  assertNotEmpty "${id}" 1 "id parameter is missing"
+  assertNotEmpty "${amount}" 1 "amount parameter is missing"
+  trace "getting nft contract address from bubble contract"
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  assertZero $? 2 "failed to query bubble contract for the nft contract address"
+  assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
+  trace "withdrawing ${amount} from nft contract ${nftContract}"
+  receipt=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} withdraw ${amount})
+  assertZero $? 2 "failed to withdraw from nft contract" "${receipt}"
+  echo "Successfully withdrew ${amount} from nft contract ${nftContract}"
 }
 
 writeMetadata() {
