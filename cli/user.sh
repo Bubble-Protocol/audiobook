@@ -2,8 +2,7 @@
 
 # Constants
 
-privateKey=requester
-publicKey=$(echo '0x41a60f71063cd7c9e5247d3e7d551f91f94b5c3b' | tr '[:upper:]' '[:lower:]')
+privateKey=user  # override with -k option
 
 PUBLIC_METADATA_FILE='0x8000000000000000000000000000000000000001'
 REGISTRY_CONTRACT='0x9B0E06b0Ceb584C1f5B46b18d6eDEC09d5BC073E'
@@ -19,27 +18,44 @@ usage() {
   echo "  $(basename $0) discover [author-id]"
   echo "  $(basename $0) library"
   echo "  $(basename $0) listen"
+  echo "  $(basename $0) transfer <book-id> <token-id> <to>"
+  echo
+  echo "Options:"
+  echo "  -k <private-key>   use the given private key or bubble tools label"
+  echo "  -h   display this help"
+  echo "  -v   verbose"
+  echo
+  echo "Default key: ${privateKey}"
   exit 1; 
 }
-
-while getopts "vh" flag; do
-    case "${flag}" in
-        v) verbose='-v' ;;
-        h) usage ;;
-        *) usage ;;
-    esac
-done
-shift $((OPTIND-1))
-
 
 # Commands
 
 run() {
+
+  while getopts "vhk:" flag; do
+    case "${flag}" in
+      v) verbose='-v' ;;
+      k) 
+        privateKey=$OPTARG;
+        assertNotEmpty "${privateKey}" 1 "private key is missing"
+        ;;
+      h) usage ;;
+      *) usage ;;
+    esac
+  done
+  shift $((OPTIND-1))
+
+  publicKey=$(bubble wallet info ${privateKey} 2>/dev/null)
+  assertZero $? 1 "invalid private key"
+  publicKey=$(echo $publicKey | tr '[:upper:]' '[:lower:]')
+
   case $1 in
     discover) discover $2 ;;
     buy) buy $2 ;;
     library) library $2 ;;
     listen) listen $2 ;;
+    transfer) transfer $2 $3 $4 ;;
     *) usage ;;
   esac
 }
@@ -52,7 +68,7 @@ discover() {
   then 
     assertAddress $authorIdParam 1 "parameter is not an account address"
     filter='{"author": "'${authorIdParam}'"}';
-    trace "querying on-chain registry for author id ${authorIdParam} using filter ${filter}"
+    trace "querying on-chain registry for author id ${authorIdParam}"
   else
     trace "querying on-chain registry for all audiobooks"
   fi
@@ -91,6 +107,8 @@ discover() {
 buy() {
   id=$1
   assertNotEmpty "${id}" 1 "missing book-id parameter"
+  trace "buying book ${id}"
+  trace "using private key '${privateKey}'"
   trace "getting nft contract address from bubble contract"
   nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address" "${nftContract}"
@@ -146,6 +164,8 @@ library() {
 listen() {
   id=$1
   assertNotEmpty "${id}" 1 "missing book-id parameter"
+  trace "downloading audio for book ${id}"
+  trace "using private key '${privateKey}'"
   trace "reading metadata from bubble at ${1}"
   metadata=$(bubble vault read --key ${privateKey} bubble ${1} $PUBLIC_METADATA_FILE)
   assertZero $? 3 "failed to read metadata from bubble"
@@ -160,6 +180,25 @@ listen() {
   bubble vault read --binary $target --key ${privateKey} bubble $1 $audiofile
   assertZero $? 2 "failed to download audio file"
   echo "Successfully downloaded audiobook to ${target}"
+}
+
+transfer() {
+  id=$1
+  tokenId=$2
+  to=$3
+  assertNotEmpty "${id}" 1 "missing book-id parameter"
+  assertNotEmpty "${tokenId}" 1 "missing token-id parameter"
+  assertNotEmpty "${to}" 1 "missing to parameter"
+  trace "transfering book ${id} token ${tokenId} to ${to}"
+  trace "using private key '${privateKey}'"
+  trace "getting nft contract address from bubble contract"
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  assertZero $? 2 "failed to query bubble contract for the nft contract address" "${nftContract}"
+  assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
+  trace "transfering token id ${tokenId} to account ${to} via nft contract ${nftContract}"
+  receipt=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} transferFrom ${publicKey} ${to} ${tokenId})
+  assertZero $? 3 "failed to transfer token id ${tokenId} of book ${id} to account ${to} (nft contract ${nftContract})" $receipt
+  echo "Successfully transfered token id ${tokenId} of book ${id} to account ${to}"
 }
 
 assertZero() {

@@ -2,8 +2,7 @@
 
 # Constants
 
-privateKey=owner
-publicKey='0xc16a409a39ede3f38e212900f8d3afe6aa6a8929'
+privateKey=author  # override with -k option
 
 PUBLIC_METADATA_FILE='0x8000000000000000000000000000000000000001'
 REGISTRY_CONTRACT='0x9B0E06b0Ceb584C1f5B46b18d6eDEC09d5BC073E'
@@ -17,29 +16,44 @@ usage() {
   echo "Usage:"
   echo "  $(basename $0) bibliography"
   echo "  $(basename $0) balance <book-id>"
-  echo "  $(basename $0) create <metadata-file> <audio-file> [book-image] [author-image]"
+  echo "  $(basename $0) publish <metadata-file> <audio-file> [book-image] [author-image]"
   echo "  $(basename $0) setPrice <book-id> <price>"
   echo "  $(basename $0) update <book-id> <filetype> <file>"
   echo "  $(basename $0) withdraw <book-id> <amount>"
+  echo
+  echo "Options:"
+  echo "  -k <private-key>   use the given private key or bubble tools label"
+  echo "  -h   display this help"
+  echo "  -v   verbose"
+  echo
+  echo "Default key: ${privateKey}"
   exit 1; 
 }
-
-while getopts "vh" flag; do
-    case "${flag}" in
-        v) verbose='-v' ;;
-        h) usage ;;
-        *) usage ;;
-    esac
-done
-shift $((OPTIND-1))
 
 
 # Commands
 
 run() {
+
+  while getopts "vhk:" flag; do
+    case "${flag}" in
+      h) usage ;;
+      k) 
+        privateKey=$OPTARG;
+        assertNotEmpty "${privateKey}" 1 "private key is missing"
+        ;;
+      v) verbose='-v' ;;
+      *) usage ;;
+    esac
+  done
+  shift $((OPTIND-1))
+
+  publicKey=$(bubble wallet info ${privateKey} 2>/dev/null)
+  assertZero $? 1 "invalid private key"
+
   case $1 in
-    create) createAudiobook $2 $3 $4 $5 ;;
-    bibliography) showBibliography ;;
+    publish) publish $2 $3 $4 $5 ;;
+    bibliography) displayBibliography ;;
     update) update $2 $3 $4 ;;
     setPrice) setPrice $2 $3 ;;
     balance) balance $2 ;;
@@ -48,8 +62,9 @@ run() {
   esac
 }
 
-createAudiobook() {
+publish() {
   trace "createAudiobook '${1}' '${2}'"
+  trace "using private key '${privateKey}'"
   assertNotEmpty "$1" 1 "metadata file parameter is missing"
   assertFileExists "$1" 1 "metadata file does not exist"
   assertNotEmpty "$2" 1 "audio file parameter is missing"
@@ -70,7 +85,7 @@ createAudiobook() {
   assertNotNull "${bookImage}" 1 "metadata is invalid: bubble.image is missing"
   assertNotNull "${authorImage}" 1 "metadata is invalid: bubble.author-image is missing"
 
-  trace "Deploying nft contract with args '${nftTitle}' ${nftSymbol}"
+  trace "Deploying nft contract with args ('${nftTitle}', '${nftSymbol}', ${price})"
   nftContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json "${nftTitle}" "${nftSymbol}" "${price}")
   echo "NFT Contract: ${nftContract}" >> contracts.log
   assertZero $? 2 "failed to deploy nft contract" "${nftContract}"
@@ -116,7 +131,8 @@ createAudiobook() {
   echo "Your unique book id is: ${bubbleContract}"
 }
 
-showBibliography() {
+displayBibliography() {
+  trace "getting events for account ${publicKey} from AudiobookRegistry contract ${REGISTRY_CONTRACT}"
   events=$(bubble contract events -f $(dirname $0)/../contracts/artifacts/AudiobookRegistry.json ${REGISTRY_CONTRACT} Register '{"author": "'${publicKey}'"}')
   assertZero $? 4 "failed to query bibliography from on-chain registry"
   bubbles=$( jq -r '.[].bubbleContract' <<< "[${events}]" | uniq)
@@ -135,6 +151,8 @@ update() {
   assertNotEmpty "${id}" 1 "id parameter is missing"
   assertNotEmpty "${type}" 1 "content type parameter is missing"
   assertNotEmpty "${file}" 1 "file parameter is missing"
+  trace "updating ${type} for book ${id} from file ${file}"
+  trace "using private key '${privateKey}'"
   if [ $type == 'metadata' ]
   then
     writeMetadata $id $file
@@ -157,6 +175,8 @@ setPrice() {
   price=$2
   assertNotEmpty "${id}" 1 "id parameter is missing"
   assertNotEmpty "${price}" 1 "price parameter is missing"
+  trace "setting price of book ${id} to ${price}"
+  trace "using private key '${privateKey}'"
   trace "getting nft contract address from bubble contract"
   nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address"
@@ -170,6 +190,7 @@ setPrice() {
 balance() {
   id=$1
   assertNotEmpty "${id}" 1 "id parameter is missing"
+  trace "getting balance in WEI for book ${id}"
   trace "getting nft contract address from bubble contract"
   nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address"
@@ -184,6 +205,8 @@ withdraw() {
   amount=$2
   assertNotEmpty "${id}" 1 "id parameter is missing"
   assertNotEmpty "${amount}" 1 "amount parameter is missing"
+  trace "withdrawing ${amount} WEI from the nft contract of book ${id}"
+  trace "using private key '${privateKey}'"
   trace "getting nft contract address from bubble contract"
   nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address"
