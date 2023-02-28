@@ -60,7 +60,7 @@ contract AudiobookNFT is ERC721 {
   }
 
   /**
-   * @dev Set the mint `price` of this nft in wei (owner only)
+   * @dev Withdraw the given amount of wei to the owner's account (owner only)
    */
   function withdraw(uint256 amount_) public {
     require(_msgSender() == author, "permission denied"); 
