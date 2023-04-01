@@ -54,7 +54,7 @@ Requires Linux or MacOS.
 
 4. Configure Bubble Tools to use the Bubble Private Cloud server
     ```
-    bubble servers add bubble http://77.68.122.253:8131 0xcf665157e7d8dd31e39d9f0e38b49d82f2b48082
+    bubble servers add bubble https://vault.bubbleprotocol.com:8131 0xcf665157e7d8dd31e39d9f0e38b49d82f2b48082
     ```
 
 5. Configure Bubble Tools to use the [Base Goerli blockchain](https://base.org)
