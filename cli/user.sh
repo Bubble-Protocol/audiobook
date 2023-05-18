@@ -4,8 +4,8 @@
 
 privateKey=user  # override with -k option
 
-PUBLIC_METADATA_FILE='0x8000000000000000000000000000000000000001'
-REGISTRY_CONTRACT='0x7394874E4B2f9bc53B6563B409Ebc9458B6A6DC7'
+PUBLIC_METADATA_FILE='0x8000000000000000000000000000000000000000000000000000000000000001'
+REGISTRY_CONTRACT='0xeac5f76BEeD5e94458836690640dD250E816242F'
 
 
 # Options
@@ -86,11 +86,11 @@ discover() {
     if [ -z $authorIdParam ]
     then
       trace "getting owner of bubble contract ${b}"
-      authorId=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json $b owner)
+      authorId=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json $b owner)
       assertZero $? 3 "failed to query owner from bubble contract ${b}"
     fi
     trace "reading metadata from bubble at ${b}"
-    metadata=$(bubble vault read --key ${privateKey} bubble ${b} $PUBLIC_METADATA_FILE)
+    metadata=$(bubble content read --key ${privateKey} bubble-base ${b} $PUBLIC_METADATA_FILE)
     assertZero $? 3 "failed to read metadata from bubble"
     author=\"$(jq -r '.author' <<< ${metadata})\"
     title=\"$(jq -r '.title' <<< ${metadata})\"
@@ -110,7 +110,7 @@ buy() {
   trace "buying book ${id}"
   trace "using private key '${privateKey}'"
   trace "getting nft contract address from bubble contract"
-  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address" "${nftContract}"
   assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
   trace "getting price from nft contract ${nftContract}"
@@ -139,7 +139,7 @@ library() {
   filter='[{"to": "'${publicKey}'"}, {"from": "'${publicKey}'"}]'
   for b in $bubbles
   do
-    nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${b} nftContract)
+    nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json ${b} nftContract)
     assertZero $? 2 "failed to query bubble contract ${b} for the nft contract address"
     assertAddress "${nftContract}" 1 "failed to query bubble ${b} contract for the nft contract address - returned contract is invalid: '${nftContract}'"
     events=$(bubble contract events -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} Transfer "${filter}")
@@ -167,7 +167,7 @@ listen() {
   trace "downloading audio for book ${id}"
   trace "using private key '${privateKey}'"
   trace "reading metadata from bubble at ${1}"
-  metadata=$(bubble vault read --key ${privateKey} bubble ${1} $PUBLIC_METADATA_FILE)
+  metadata=$(bubble content read --key ${privateKey} bubble-base ${1} $PUBLIC_METADATA_FILE)
   assertZero $? 3 "failed to read metadata from bubble"
   author=\"$(jq -r '.author' <<< ${metadata})\"
   title=\"$(jq -r '.title' <<< ${metadata})\"
@@ -177,7 +177,7 @@ listen() {
   if [ -z $filetype ]; then filetype='download'; fi
   target="${1}.${filetype}"
   trace "downloading ${audiofile} from bubble at ${1}"
-  bubble vault read --binary $target --key ${privateKey} bubble $1 $audiofile
+  bubble content read --binary $target --key ${privateKey} bubble-base $1 $audiofile
   assertZero $? 2 "failed to download audio file"
   echo "Successfully downloaded audiobook to ${target}"
 }
@@ -192,7 +192,7 @@ transfer() {
   trace "transfering book ${id} token ${tokenId} to ${to}"
   trace "using private key '${privateKey}'"
   trace "getting nft contract address from bubble contract"
-  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address" "${nftContract}"
   assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
   trace "transfering token id ${tokenId} to account ${to} via nft contract ${nftContract}"

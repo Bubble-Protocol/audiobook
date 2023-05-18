@@ -54,16 +54,15 @@ Requires Linux or MacOS.
 
 4. Configure Bubble Tools to use the Bubble Private Cloud server
     ```
-    bubble servers add bubble https://vault.bubbleprotocol.com:8131 0xcf665157e7d8dd31e39d9f0e38b49d82f2b48082
+    bubble servers add bubble-base https://vault.bubbleprotocol.com/v2/base-goerli
     ```
 
 5. Configure Bubble Tools to use the [Base Goerli blockchain](https://base.org)
 
-    NB: if you have previously customised `~/.bubble-tools/provider` then back it up first!
+    The simplest way to do this is to piggyback on Bubble Protocol's blockchain providers.
 
     ```
-    cd audiobook
-    cp -n provider.json ~/.bubble-tools/provider
+    curl https://vault.bubbleprotocol.com:8125/providers > ~/.bubble-tools/providers
     ```
 
 ### Usage

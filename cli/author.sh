@@ -4,8 +4,8 @@
 
 privateKey=author  # override with -k option
 
-PUBLIC_METADATA_FILE='0x8000000000000000000000000000000000000001'
-REGISTRY_CONTRACT='0x7394874E4B2f9bc53B6563B409Ebc9458B6A6DC7'
+PUBLIC_METADATA_FILE='0x8000000000000000000000000000000000000000000000000000000000000001'
+REGISTRY_CONTRACT='0xeac5f76BEeD5e94458836690640dD250E816242F'
 
 
 # Options
@@ -23,6 +23,7 @@ usage() {
   echo
   echo "Options:"
   echo "  -k <private-key>   use the given private key or bubble tools label"
+  echo "  -p   gas price (overrides recommended price)"
   echo "  -h   display this help"
   echo "  -v   verbose"
   echo
@@ -41,6 +42,10 @@ run() {
       k) 
         privateKey=$OPTARG;
         assertNotEmpty "${privateKey}" 1 "private key is missing"
+        ;;
+      p)
+        gasPrice="-p ${OPTARG}"
+        assertNotEmpty "${OPTARG}" 1 "gas price is missing"
         ;;
       v) verbose='-v' ;;
       *) usage ;;
@@ -69,6 +74,8 @@ publish() {
   assertFileExists "$1" 1 "metadata file does not exist"
   assertNotEmpty "$2" 1 "audio file parameter is missing"
   assertFileExists "$2" 1 "audio file does not exist"
+  assertOptionalFileExists "$3" 1 "book image file does not exist"
+  assertOptionalFileExists "$4" 1 "author image file does not exist"
 
   metadata=$(<$1)
   nftTitle=$( jq -r '.nft.title' <<< "${metadata}")
@@ -86,21 +93,21 @@ publish() {
   assertNotNull "${authorImage}" 1 "metadata is invalid: bubble.author-image is missing"
 
   trace "Deploying nft contract with args ('${nftTitle}', '${nftSymbol}', ${price})"
-  nftContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json "${nftTitle}" "${nftSymbol}" "${price}")
+  nftContract=$(bubble contract deploy --key ${privateKey} ${gasPrice} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json "${nftTitle}" "${nftSymbol}" "${price}")
   echo "NFT Contract: ${nftContract}" >> contracts.log
   assertZero $? 2 "failed to deploy nft contract" "${nftContract}"
-  assertAddress "${nftContract}" 1 "failed to deploy nft contract - contract is invalid: '${nftContract}'"
+  assertAddress "${nftContract}" 1 "failed to deploy nft contract - contract address is invalid: '${nftContract}'"
   echo "Successfully deployed NFT Contract: ${nftContract}"
 
   trace "Deploying bubble contract"
-  bubbleContract=$(bubble contract deploy --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json "${nftContract}")
+  bubbleContract=$(bubble contract deploy --key ${privateKey} ${gasPrice} -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json "${nftContract}")
   echo "Bubble Contract: ${bubbleContract}" >> contracts.log
   assertZero $? 2 "failed to deploy bubble contract"
   assertAddress "${bubbleContract}" 1 "failed to deploy nft contract - contract is invalid: '${bubbleContract}'"
   echo "Successfully deployed Bubble Contract: ${bubbleContract}"
 
   trace "Creating bubble"
-  bubble vault create ${verbose} --key ${privateKey} bubble $bubbleContract
+  bubble content create-bubble ${verbose} --key ${privateKey} bubble-base $bubbleContract
   assertZero $? 2 "failed to create bubble"
   echo "Successfully created bubble"
   
@@ -125,7 +132,7 @@ publish() {
   fi
 
   trace "Registering book launch with on-chain Audiobook Registry"
-  receipt=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookRegistry.json ${REGISTRY_CONTRACT} register ${bubbleContract})
+  receipt=$(bubble contract transact --key ${privateKey} ${gasPrice} -f $(dirname $0)/../contracts/artifacts/AudiobookRegistry.json ${REGISTRY_CONTRACT} register ${bubbleContract})
   assertZero $? 4 "failed to register book launch with on-chain registry" "${receipt}"
   echo "Successfully registered book launch with on-chain Audiobook Registry"
   echo "Your unique book id is: ${bubbleContract}"
@@ -139,7 +146,7 @@ displayBibliography() {
   for b in $bubbles
   do
     trace "reading metadata from bubble at ${b}"
-    metadata=$(bubble vault read --key ${privateKey} bubble ${b} $PUBLIC_METADATA_FILE)
+    metadata=$(bubble content read --key ${privateKey} bubble-base ${b} $PUBLIC_METADATA_FILE)
     echo "id: ${b}, title: \"$(jq -r '.title' <<< ${metadata})\""
   done
 }
@@ -160,7 +167,7 @@ update() {
     echo "Successfully wrote ${type} (${file}) to bubble ${id} file ${PUBLIC_METADATA_FILE}"
   else
     trace "reading metadata from bubble at ${id}"
-    metadata=$(bubble vault read --key ${privateKey} bubble ${id} $PUBLIC_METADATA_FILE)
+    metadata=$(bubble content read --key ${privateKey} bubble-base ${id} $PUBLIC_METADATA_FILE)
     assertZero $? 3 "failed to read metadata from bubble"
     filename=$( jq -r '.bubble."'${type}'"' <<< "${metadata}")
     assertNotNull "$filename" 1 "type parameter is invalid"
@@ -178,11 +185,11 @@ setPrice() {
   trace "setting price of book ${id} to ${price}"
   trace "using private key '${privateKey}'"
   trace "getting nft contract address from bubble contract"
-  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address"
   assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
   trace "setting price on nft contract ${nftContract}"
-  receipt=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} setPrice ${price})
+  receipt=$(bubble contract transact --key ${privateKey} ${gasPrice} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} setPrice ${price})
   assertZero $? 2 "failed to set price on nft contract" "${receipt}"
   echo "Successfully set price of ${price} on nft contract ${nftContract} for audiobook id ${id}"
 }
@@ -192,7 +199,7 @@ balance() {
   assertNotEmpty "${id}" 1 "id parameter is missing"
   trace "getting balance in WEI for book ${id}"
   trace "getting nft contract address from bubble contract"
-  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address"
   assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
   trace "getting balance of nft contract ${nftContract}"
@@ -208,11 +215,11 @@ withdraw() {
   trace "withdrawing ${amount} WEI from the nft contract of book ${id}"
   trace "using private key '${privateKey}'"
   trace "getting nft contract address from bubble contract"
-  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookSDAC.json ${id} nftContract)
+  nftContract=$(bubble contract call -f $(dirname $0)/../contracts/artifacts/AudiobookACC.json ${id} nftContract)
   assertZero $? 2 "failed to query bubble contract for the nft contract address"
   assertAddress "${nftContract}" 1 "failed to query bubble contract for the nft contract address - returned contract is invalid: '${nftContract}'"
   trace "withdrawing ${amount} from nft contract ${nftContract}"
-  receipt=$(bubble contract transact --key ${privateKey} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} withdraw ${amount})
+  receipt=$(bubble contract transact --key ${privateKey} ${gasPrice} -f $(dirname $0)/../contracts/artifacts/AudiobookNFT.json ${nftContract} withdraw ${amount})
   assertZero $? 2 "failed to withdraw from nft contract" "${receipt}"
   echo "Successfully withdrew ${amount} from nft contract ${nftContract}"
 }
@@ -233,7 +240,7 @@ writeFile() {
   assertNotEmpty "${inputfile}" 1 "${type} is missing"
   assertFileExists "${inputfile}" 1 "${type} file '${inputfile}' does not exist"
   trace "Writing ${type} (${inputfile}) to bubble ${contract} file ${filename}"
-  bubble vault write ${verbose} ${binaryOption} --key ${privateKey} bubble ${contract} "${filename}" "${inputfile}"
+  bubble content write ${verbose} ${binaryOption} --key ${privateKey} bubble-base ${contract} "${filename}" "${inputfile}"
   return $?
 }
 
@@ -251,6 +258,10 @@ assertNotNull() {
 
 assertFileExists() {
   if [ ! -f $1 ]; then error $2 "${3}" "${4}"; fi
+}
+
+assertOptionalFileExists() {
+  if [ ! -z "$1" -a ! -f "$1" ]; then error $2 "${3}" "${4}"; fi
 }
 
 assertAddress() {
