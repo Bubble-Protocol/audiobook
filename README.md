@@ -221,6 +221,6 @@ The service's smart contracts can be found in the [`contracts`](contracts) direc
 | Contract            | Description |
 | --- | --- |
 | [`AudiobookNFT.sol`](contracts/AudiobookNFT.sol) | One contract deployed for each audiobook. ERC721 implementation based on the [openzeppelin](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/master/contracts/token/ERC721/ERC721.sol) implementation.  Adds a price field and mint function to let users buy books for the price set by the author. |
-| [`AudiobookSDAC.sol`](contracts/AudiobookSDAC.sol) | One contract deployed for each audiobook.  Protects the bubble by specifying the access permissions.  Queries the NFT contract to restrict access to the audio file to owners of the book's NFT. |
-| [`AudiobookRegistry.sol`](contracts/AudiobookRegistry.sol) | Singleton contract that acts as a discovery service.  Any `AudiobookSDAC` registered with this contract will be discoverable with the [`user.sh discovery`](#audiobook-discovery) command. |
+| [`AudiobookACC.sol`](contracts/AudiobookACC.sol) | One contract deployed for each audiobook.  Protects the bubble by specifying the access permissions.  Queries the NFT contract to restrict access to the audio file to owners of the book's NFT. |
+| [`AudiobookRegistry.sol`](contracts/AudiobookRegistry.sol) | Singleton contract that acts as a discovery service.  Any `AudiobookACC` registered with this contract will be discoverable with the [`user.sh discovery`](#audiobook-discovery) command. |
 
